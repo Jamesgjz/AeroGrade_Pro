@@ -142,9 +142,10 @@ ENUNCIADO: {st.session_state.enunciado}
 RÚBRICA: {rubrica_texto}
 
 ESTILO DE COMUNICACIÓN OBLIGATORIO:
-- Escribe siempre en segunda persona ("tú").
-- El tono debe ser sumamente cercano, cómodo, cálido y muy personal. Queremos que el estudiante sienta que lo está leyendo un mentor humano que valora genuinamente su esfuerzo.
-- Evita por completo sonar como un robot, usar frases de cajón o expresiones genéricas. Háblale como si estuvieran sentados conversando amigablemente sobre su proceso de aprendizaje.
+- Escribe de forma directa y personal, pero TIENES ESTRICTAMENTE PROHIBIDO iniciar las frases con los pronombres "tú", "usted", "él" o "ella". 
+- Usa el sujeto tácito. En lugar de decir "Tú hiciste un buen trabajo", escribe "Hiciste un excelente trabajo" o "Lograste resolver...". 
+- El tono debe ser cercano, cómodo, cálido y empático. Queremos que el estudiante sienta que lo lee su docente conversando amigablemente sobre su aprendizaje.
+- Evita sonar como un robot o usar frases genéricas. Arranca los párrafos de forma natural.
 
 REGLAS TÉCNICAS:
 - NOTA: Número decimal de 0.0 a 5.0. NUNCA uses escala de 10 o 100.
