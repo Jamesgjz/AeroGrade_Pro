@@ -65,7 +65,7 @@ with col_csv1:
     archivo_calificaciones = st.file_uploader("Sube el CSV de calificaciones", type=["csv"])
 with col_csv2:
     archivo_rubricas = st.file_uploader("Sube el CSV de rúbricas", type=["csv"])
-with c_zip := col_zip:
+with col_zip:
     archivo_zip = st.file_uploader('📦 Sube el .zip de entregas (Máx 1GB)', type=['zip'])
 
 if archivo_calificaciones and archivo_rubricas:
