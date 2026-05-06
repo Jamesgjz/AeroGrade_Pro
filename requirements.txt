@@ -1,0 +1,22 @@
+streamlit
+groq
+python-dotenv
+# --- LECTURA DE DOCUMENTOS Y TEXTO ---
+python-pptx
+PyPDF2
+python-docx
+chardet
+# --- CÓDIGO, DATOS Y PROYECTOS (NetBeans, SQL, R, DAX) ---
+pandas
+openpyxl
+pygments
+# --- IMÁGENES Y DIAGRAMAS (OCR para UML) ---
+Pillow
+pytesseract
+# --- VIDEO, AUDIO Y MULTIMEDIA ---
+openai-whisper
+yt-dlp
+moviepy
+pydub
+# --- GESTIÓN DE ARCHIVOS Y COMPRIMIDOS ---
+pathlib
