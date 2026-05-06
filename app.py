@@ -40,7 +40,7 @@ canvas_domain = st.sidebar.text_input('🌐 Dominio de Canvas', value='https://u
 curso_id = st.sidebar.text_input('🏫 ID del Curso en Canvas', value='11731')
 actividad_id = st.sidebar.text_input('📝 ID de la Actividad', value='208144')
 
-# 4. Interfaz - Campos Limpios (Enunciado y Plantilla)
+# 4. Interfaz - Campos Limpios
 st.title("🛡️ AeroGrade Pro: Sincronización UNIMINUTO")
 st.markdown("---")
 
@@ -79,8 +79,19 @@ if archivo_calificaciones and archivo_rubricas:
         rubrica_seleccionada = st.selectbox('Selecciona la rúbrica correspondiente:', df_rubricas['Rubric Name'].unique())
         rubrica_texto = df_rubricas[df_rubricas['Rubric Name'] == rubrica_seleccionada].to_csv(index=False)
         
-        # Filtrar Metadata de Canvas
+        # Filtrar Metadata y Secciones de Canvas (Devolviendo tu lógica original)
         df_filtrado = df_calificaciones[df_calificaciones['Student'].astype(str).str.strip() != 'Points Possible'].copy()
+        
+        if 'MA' in actividad_seleccionada:
+            df_filtrado = df_filtrado[df_filtrado['Section'].astype(str).str.contains('Actividades', na=False)]
+        elif 'MT' in actividad_seleccionada:
+            df_filtrado = df_filtrado[df_filtrado['Section'].astype(str).str.contains('Trabajo Final', na=False)]
+            
+        columnas_mostrar = ['Student', 'ID', 'Section', actividad_seleccionada]
+        columnas_mostrar_existentes = [col for col in columnas_mostrar if col in df_filtrado.columns]
+        
+        # 📌 AQUÍ ESTÁ LA TABLA VISUAL QUE FALTABA
+        st.dataframe(df_filtrado[columnas_mostrar_existentes])
         
         if st.button('✅ Iniciar Motor de Evaluación Llama 3'):
             if not canvas_token or not curso_id:
@@ -114,7 +125,6 @@ if archivo_calificaciones and archivo_rubricas:
                                 elif f_name.endswith('.pdf'):
                                     reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
                                     for p in reader.pages: texto_extraido += p.extract_text() + "\n"
-                                # NOTA: Aquí actúan las demás librerías que pusimos en requirements.txt
                 
                 if texto_extraido:
                     with st.expander(f"Evaluando a: {nombre_estudiante}", expanded=True):
@@ -140,8 +150,9 @@ ENTREGA DEL ESTUDIANTE:
 RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO CON LAS CLAVES: "nota" (número), "p1", "p2", "p3" (textos)."""
 
                         try:
+                            # 📌 AQUÍ ESTÁ EL MODELO NUEVO ACTUALIZADO
                             respuesta = client.chat.completions.create(
-                                model="llama3-70b-8192",
+                                model="llama-3.3-70b-versatile",
                                 messages=[{"role": "user", "content": prompt}],
                                 response_format={"type": "json_object"},
                                 temperature=0.2
