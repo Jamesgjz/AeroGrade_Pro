@@ -20,3 +20,5 @@ moviepy
 pydub
 # --- GESTIÓN DE ARCHIVOS Y COMPRIMIDOS ---
 pathlib
+beautifulsoup4
+requests
