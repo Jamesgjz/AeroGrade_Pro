@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 import streamlit.components.v1 as components
 from groq import Groq
 
-# 1. Configuración Inicial
+# 1. Configuración Inicial de la Aplicación
 st.set_page_config(page_title="AeroGrade Pro - UNIMINUTO", layout="wide")
 
 if 'estudiantes_evaluados' not in st.session_state:
@@ -33,15 +33,15 @@ def enviar_nota_canvas(domain, token, course_id, assignment_id, student_id, nota
     except Exception as e:
         return False
 
-# 3. Barra Lateral
+# 3. Barra Lateral (Parámetros Técnicos)
 st.sidebar.header("⚙️ Configuración Canvas y API")
 canvas_token = st.sidebar.text_input("Canvas API Token", type="password")
 canvas_domain = st.sidebar.text_input('🌐 Dominio de Canvas', value='https://uniminuto.instructure.com')
 curso_id = st.sidebar.text_input('🏫 ID del Curso en Canvas', value='11731')
 actividad_id = st.sidebar.text_input('📝 ID de la Actividad', value='208144')
 
-# 4. Interfaz - Campos Limpios
-st.title("🛡️ AeroGrade Pro: Evaluación y Sincronización")
+# 4. Interfaz - Configuración del Docente
+st.title("🛡️ AeroGrade Pro: Evaluación con Enfoque Humano")
 st.markdown("---")
 
 col1, col2 = st.columns(2)
@@ -58,14 +58,14 @@ with col2:
         height=200
     )
 
-# 5. Carga de Archivos
+# 5. Carga de Insumos Académicos
 st.subheader("📤 Archivos de Calificación")
 col_csv1, col_csv2, col_zip = st.columns(3)
 with col_csv1:
     archivo_calificaciones = st.file_uploader("Sube el CSV de calificaciones", type=["csv"])
 with col_csv2:
     archivo_rubricas = st.file_uploader("Sube el CSV de rúbricas", type=["csv"])
-with col_zip:
+with c_zip := col_zip:
     archivo_zip = st.file_uploader('📦 Sube el .zip de entregas (Máx 1GB)', type=['zip'])
 
 if archivo_calificaciones and archivo_rubricas:
@@ -76,7 +76,6 @@ if archivo_calificaciones and archivo_rubricas:
     
     if columnas_actividad:
         st.markdown("---")
-        # 🚨 ALERTA VISUAL justificada sobre el selector
         st.error("⚠️ ¡ATENCIÓN DOCENTE! Recuerde SELECCIONAR LA ACTIVIDAD en el menú desplegable de abajo antes de iniciar.")
         actividad_seleccionada = st.selectbox("🎯 SELECCIONE LA ACTIVIDAD A CALIFICAR:", ["-- Seleccione una actividad --"] + columnas_actividad)
         
@@ -93,28 +92,21 @@ if archivo_calificaciones and archivo_rubricas:
                 
             total_estudiantes = len(df_filtrado)
             
-            if total_estudiantes == 0:
-                st.warning("No se encontraron estudiantes para la actividad o sección seleccionada. Revisa el archivo CSV.")
-            else:
-                columnas_mostrar = ['Student', 'ID', 'Section', actividad_seleccionada]
-                columnas_mostrar_existentes = [col for col in columnas_mostrar if col in df_filtrado.columns]
+            if total_estudiantes > 0:
+                st.write(f"📋 **Estudiantes detectados para evaluación: {total_estudiantes}**")
+                st.dataframe(df_filtrado[['Student', 'ID', 'Section', actividad_seleccionada]])
                 
-                st.write("📋 **Estudiantes detectados para esta actividad:**")
-                st.dataframe(df_filtrado[columnas_mostrar_existentes])
-                
-                # BOTÓN DE PROCESAMIENTO
-                if st.button('🚀 Iniciar Generación de Borradores (Vista Previa)'):
-                    if not canvas_token or not curso_id:
-                        st.error("⚠️ Faltan datos de Canvas en la barra lateral.")
+                if st.button('🚀 Iniciar Calificación en Tiempo Real'):
+                    if not canvas_token or "GROQ_API_KEY" not in st.secrets:
+                        st.error("Faltan credenciales (Canvas Token o Groq API Key).")
                         st.stop()
-                    if "GROQ_API_KEY" not in st.secrets:
-                        st.error("⚠️ Falta configurar GROQ_API_KEY en los Secrets de Streamlit.")
-                        st.stop()
-                        
+                    
                     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
                     st.session_state['estudiantes_evaluados'] = []
                     
                     barra_progreso = st.progress(0)
+                    st.markdown("### ✍️ Generando borradores...")
+                    contenedor_en_vivo = st.container()
                     
                     for idx, (i, row) in enumerate(df_filtrado.iterrows()):
                         nombre_estudiante = row.get('Student', 'Desconocido')
@@ -122,17 +114,17 @@ if archivo_calificaciones and archivo_rubricas:
                         nota_actual = row[actividad_seleccionada]
                         
                         if pd.notna(nota_actual) and str(nota_actual).strip() not in ['', '-']:
-                            st.info(f'⏭️ {nombre_estudiante} ya tiene nota. Omitiendo...')
+                            with contenedor_en_vivo:
+                                st.info(f'⏭️ {nombre_estudiante} ya tiene nota. Omitiendo...')
                             barra_progreso.progress((idx + 1) / total_estudiantes)
                             continue
                             
                         texto_extraido = ""
                         if archivo_zip:
                             with zipfile.ZipFile(archivo_zip, 'r') as z:
-                                archivos_estudiante = [f for f in z.namelist() if student_id in f]
-                                for f_name in archivos_estudiante:
+                                matching_files = [f for f in z.namelist() if student_id in f]
+                                for f_name in matching_files:
                                     with z.open(f_name) as f:
-                                        # Soporte ampliado para lectura de archivos dentro del ZIP
                                         if f_name.endswith(('.java', '.txt', '.sql', '.html', '.py', '.r', '.csv')):
                                             texto_extraido += f.read().decode('utf-8', errors='ignore') + "\n"
                                         elif f_name.endswith('.pdf'):
@@ -143,86 +135,71 @@ if archivo_calificaciones and archivo_rubricas:
                                             texto_extraido += "\n".join([para.text for para in doc.paragraphs]) + "\n"
                         
                         if texto_extraido:
-                            prompt = f"""Actúa como un experto en desarrollo de software y redes. Eres un profesor virtual en UNIMINUTO.
-Evalúa esta entrega basándote en el ENUNCIADO y la RÚBRICA.
+                            prompt = f"""Actúa como un profesor experto de UNIMINUTO. 
+Evalúa este trabajo basándote en el ENUNCIADO y la RÚBRICA proporcionados.
 
 ENUNCIADO: {st.session_state.enunciado}
 RÚBRICA: {rubrica_texto}
 
-REGLAS OBLIGATORIAS:
-- ESCALA DE CALIFICACIÓN: La nota OBLIGATORIAMENTE debe ser un número decimal entre 0.0 y 5.0 (ejemplo: 4.5, 3.2, 5.0). NUNCA uses escalas de 10 o 100.
-- NO uses emojis, ni viñetas, ni íconos.
-- PROHIBICIÓN ABSOLUTA DE VOCABULARIO: BAJO NINGUNA CIRCUNSTANCIA uses las palabras "crucial" o "clave" en tu respuesta. Cámbialas por "fundamental" o "importante".
-- Escribe en segunda persona ('tú').
-- p1 (Logros): Un párrafo destacando lo bueno.
-- p2 (Mejoras): Un párrafo con áreas de oportunidad. NUNCA sugieras un reenvío del trabajo.
-- p3 (Material): Un párrafo con referencias bibliográficas reales (1 en español, 1 en inglés).
+ESTILO DE COMUNICACIÓN OBLIGATORIO:
+- Escribe siempre en segunda persona ("tú").
+- El tono debe ser sumamente cercano, cómodo, cálido y muy personal. Queremos que el estudiante sienta que lo está leyendo un mentor humano que valora genuinamente su esfuerzo.
+- Evita por completo sonar como un robot, usar frases de cajón o expresiones genéricas. Háblale como si estuvieran sentados conversando amigablemente sobre su proceso de aprendizaje.
 
-ENTREGA DEL ESTUDIANTE:
-{texto_extraido[:8000]}
+REGLAS TÉCNICAS:
+- NOTA: Número decimal de 0.0 a 5.0. NUNCA uses escala de 10 o 100.
+- PROHIBICIÓN DE VOCABULARIO: BAJO NINGUNA CIRCUNSTANCIA uses las palabras "crucial" ni "clave". Cámbialas por "fundamental", "esencial" o "importante".
+- ESTRUCTURA:
+  - p1 (Logros): Un párrafo destacando lo que hizo bien.
+  - p2 (Mejoras): Un párrafo constructivo. NO sugieras reenvíos.
+  - p3 (Material): Un párrafo con una referencia bibliográfica en español y una en inglés.
 
-RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO CON LAS CLAVES: "nota" (número decimal entre 0 y 5), "p1", "p2", "p3" (textos)."""
+ENTREGA:
+{texto_extraido[:8500]}
+
+RESPONDE SOLO CON JSON: {{"nota": decimal, "p1": "texto", "p2": "texto", "p3": "texto"}}"""
 
                             try:
-                                respuesta = client.chat.completions.create(
+                                resp = client.chat.completions.create(
                                     model="llama-3.3-70b-versatile",
                                     messages=[{"role": "user", "content": prompt}],
                                     response_format={"type": "json_object"},
-                                    temperature=0.2
+                                    temperature=0.3
                                 )
                                 
-                                resultado = json.loads(respuesta.choices[0].message.content)
-                                
-                                html_final = st.session_state.plantilla.replace('REEMPLAZO_P1', resultado.get('p1', ''))
-                                html_final = html_final.replace('REEMPLAZO_P2', resultado.get('p2', ''))
-                                html_final = html_final.replace('REEMPLAZO_P3', resultado.get('p3', ''))
+                                res = json.loads(resp.choices[0].message.content)
+                                html_f = st.session_state.plantilla.replace('REEMPLAZO_P1', res['p1']).replace('REEMPLAZO_P2', res['p2']).replace('REEMPLAZO_P3', res['p3'])
                                 
                                 st.session_state['estudiantes_evaluados'].append({
                                     'nombre': nombre_estudiante,
                                     'student_id': student_id,
-                                    'nota': float(resultado.get('nota', 0)),
-                                    'html_final': html_final
+                                    'nota': float(res['nota']),
+                                    'html_final': html_f
                                 })
+                                
+                                with contenedor_en_vivo:
+                                    if float(res['nota']) < 3.5:
+                                        st.warning(f"⚠️ REVISIÓN REQUERIDA: {nombre_estudiante} tiene nota inferior a 3.5 ({res['nota']})")
+                                    with st.expander(f"🧑‍🎓 {nombre_estudiante} - Nota: {res['nota']}", expanded=True):
+                                        components.html(html_f, height=200, scrolling=True)
                                     
                             except Exception as e:
-                                st.error(f"Error procesando a {nombre_estudiante}: {e}")
+                                with contenedor_en_vivo: st.error(f"Error con {nombre_estudiante}: {e}")
                         
                         barra_progreso.progress((idx + 1) / total_estudiantes)
                     
-                    st.success("✅ Borradores generados. Por favor, revisa las notas abajo antes de enviar.")
+                    st.success("✅ Evaluación terminada. Revisa los comentarios arriba y sincroniza al final de la página.")
 
-# 6. MÓDULO DE VISTA PREVIA Y SINCRONIZACIÓN FINAL
+# 6. Sincronización Final
 if st.session_state.get('estudiantes_evaluados'):
     st.divider()
-    st.subheader("👀 Vista Previa de Calificaciones (Pendientes de Envío)")
-    
-    for est in st.session_state['estudiantes_evaluados']:
-        if est['nota'] < 3.5:
-            st.warning(f"⚠️ ATENCIÓN: {est['nombre']} obtuvo una nota de {est['nota']}. Requiere revisión.")
-            
-        with st.expander(f"🧑‍🎓 {est['nombre']} - Nota Asignada: {est['nota']}"):
-            st.markdown("**Previsualización del comentario (HTML renderizado):**")
-            components.html(est['html_final'], height=250, scrolling=True)
-
-    st.divider()
-    st.subheader("🚀 Paso Final: Sincronización con Canvas")
-    st.info(f"Tienes {len(st.session_state['estudiantes_evaluados'])} calificaciones listas para enviar.")
-    
-    if st.button("📤 APROBAR Y SUBIR TODAS LAS NOTAS A CANVAS", type="primary"):
-        barra_envio = st.progress(0)
-        total_envio = len(st.session_state['estudiantes_evaluados'])
-        errores = 0
-        
-        for idx_envio, est in enumerate(st.session_state['estudiantes_evaluados']):
-            exito = enviar_nota_canvas(canvas_domain, canvas_token, curso_id, actividad_id, est['student_id'], est['nota'], est['html_final'])
-            if not exito:
-                st.error(f"❌ Fallo al enviar la nota de {est['nombre']}.")
-                errores += 1
-            barra_envio.progress((idx_envio + 1) / total_envio)
-            
-        if errores == 0:
-            st.balloons()
-            st.success("¡Sincronización completada! Todas las notas y comentarios se enviaron exitosamente a Canvas.")
-            st.session_state['estudiantes_evaluados'] = []
-        else:
-            st.warning(f"Se enviaron las notas, pero hubo {errores} errores. Revisa los mensajes arriba.")
+    st.subheader("🚀 Sincronización Masiva con Canvas")
+    if st.button("📤 SUBIR TODAS LAS NOTAS AHORA", type="primary"):
+        b_envio = st.progress(0)
+        total_e = len(st.session_state['estudiantes_evaluados'])
+        for idx_e, est in enumerate(st.session_state['estudiantes_evaluados']):
+            enviar_nota_canvas(canvas_domain, canvas_token, curso_id, actividad_id, est['student_id'], est['nota'], est['html_final'])
+            b_envio.progress((idx_e + 1) / total_e)
+        st.balloons()
+        st.success("¡Proceso completado exitosamente!")
+        st.session_state['estudiantes_evaluados'] = []
