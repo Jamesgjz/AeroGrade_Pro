@@ -18,7 +18,7 @@ if 'estudiantes_evaluados' not in st.session_state:
 if 'tokens_acumulados' not in st.session_state:
     st.session_state['tokens_acumulados'] = 0
 
-# 2. Funciones de Inteligencia y Soporte
+# 2. Funciones de Inteligencia
 def listar_modelos_gemini(api_key):
     try:
         genai.configure(api_key=api_key)
@@ -34,7 +34,7 @@ def enviar_nota_canvas(domain, token, course_id, assignment_id, student_id, nota
         return response.status_code == 200
     except: return False
 
-# 3. Sidebar - Configuración de Motores
+# 3. Sidebar - Configuración y Motores
 st.sidebar.header("⚙️ Configuración del Motor")
 motor_ia = st.sidebar.selectbox("Seleccione Motor:", ["Groq (Gratis)", "Google Gemini (Potencia/Pago)"])
 
@@ -43,7 +43,7 @@ gemini_key = ""
 modelo_seleccionado = "llama-3.3-70b-versatile"
 
 if motor_ia == "Google Gemini (Potencia/Pago)":
-    gemini_key = st.sidebar.text_input("Ingrese Gemini API Key:", type="password")
+    gemini_key = st.sidebar.text_input("Ingrese su Gemini API Key:", type="password")
     if gemini_key:
         opciones = listar_modelos_gemini(gemini_key)
         modelo_seleccionado = st.sidebar.selectbox("Versión de Gemini Detectada:", opciones)
@@ -52,16 +52,15 @@ canvas_token = st.sidebar.text_input("Canvas Token", type="password")
 curso_id = st.sidebar.text_input('ID Curso', value='11731')
 actividad_id = st.sidebar.text_input('ID Actividad', value='208144')
 
-st.title("🛡️ AeroGrade Pro: Validación y Control Total")
+st.title("🛡️ AeroGrade Pro: Monitor de Costos y Lectura Híbrida")
 st.markdown("---")
 
-# 4. Parámetros de la Actividad
+# 4. Parámetros
 c_p1, c_p2 = st.columns(2)
-with c_p1: st.session_state.enunciado = st.text_area("📝 Enunciado:", height=100)
+with c_p1: st.session_state.enunciado = st.text_area("📝 Enunciado de la Actividad:", height=100)
 with c_p2: st.session_state.plantilla = st.text_area("🖥️ Plantilla HTML:", height=100)
 
-# 5. Carga de Insumos
-st.subheader("📤 Carga de Archivos")
+st.subheader("📤 Carga de Insumos")
 c1, c2, c3 = st.columns(3)
 with c1: archivo_calificaciones = st.file_uploader("CSV Calificaciones", type=["csv"])
 with c2: archivo_rubricas = st.file_uploader("CSV Rúbricas", type=["csv"])
@@ -80,21 +79,21 @@ if archivo_calificaciones and archivo_rubricas:
             df_final = df_cal[df_cal['Student'].astype(str).str.strip() != 'Points Possible'].copy()
             df_final = df_final[df_final['ID'].notna()]
 
-            # --- MONITOR DE COSTOS (LO GANADO) ---
+            # --- MONITOR DE COSTOS ---
             st.markdown("### 📊 Monitor de Inversión")
             m1, m2, m3 = st.columns(3)
             m1.metric("Tokens Consumidos", f"{st.session_state['tokens_acumulados']:,}")
             if "Gemini" in motor_ia:
                 costo_usd = (st.session_state['tokens_acumulados'] / 1_000_000) * 0.10
-                m2.metric("Costo Est. (USD)", f"${costo_usd:.4f}")
-                m3.metric("Motor", "Gemini")
+                m2.metric("Costo Estimado (USD)", f"${costo_usd:.4f}")
+                m3.metric("Estado", "Gemini Activo")
             else:
-                m2.metric("Costo Real", "$0.00")
-                m3.metric("Motor", "Groq")
+                m2.metric("Costo Real", "$0.00 COP")
+                m3.metric("Estado", "Groq (Gratuito)")
 
-            # --- VISUALIZACIÓN PREVIA DE RESULTADOS ---
+            # --- VISUALIZACIÓN DE RESULTADOS PREVIOS ---
             if st.session_state['estudiantes_evaluados']:
-                st.subheader("✅ Borradores para Validación")
+                st.subheader("📝 Borradores Generados")
                 for e in st.session_state['estudiantes_evaluados']:
                     with st.expander(f"🧑‍🎓 {e['nombre']} - Nota: {e['nota']}", expanded=False):
                         components.html(e['html_final'], height=150, scrolling=True)
@@ -117,7 +116,8 @@ if archivo_calificaciones and archivo_rubricas:
                 for idx, (i, row) in enumerate(df_final.iterrows()):
                     nombre = row.get('Student', 'Estudiante')
                     sid = str(int(float(row.get('ID', 0))))
-                    nombre_busqueda = nombre.split(',')[0].lower().strip() # Tomamos el primer apellido
+                    # Limpieza para búsqueda por nombre
+                    partes_nombre = nombre.replace(',', '').lower().split()
                     
                     if sid in [e['student_id'] for e in st.session_state['estudiantes_evaluados']]:
                         progreso.progress((idx + 1) / len(df_final))
@@ -128,11 +128,12 @@ if archivo_calificaciones and archivo_rubricas:
                     contenido = ""
                     if archivo_zip:
                         with zipfile.ZipFile(archivo_zip, 'r') as z:
-                            # BÚSQUEDA HÍBRIDA: Primero por ID, luego por Apellido si falla
-                            archivos = [f for f in z.namelist() if sid in f or nombre_busqueda in f.lower()]
+                            lista_archivos = z.namelist()
+                            # BÚSQUEDA HÍBRIDA: ID o cualquier parte del nombre
+                            archivos = [f for f in lista_archivos if sid in f or any(p in f.lower() for p in partes_nombre if len(p) > 3)]
                             
                             if archivos:
-                                with log_container: st.info(f"📄 Leyendo: {archivos} para {nombre}")
+                                with log_container: st.info(f"📄 Archivos detectados para {nombre}: {archivos}")
                                 for f_n in archivos:
                                     with z.open(f_n) as f:
                                         ext = f_n.lower()
@@ -143,11 +144,11 @@ if archivo_calificaciones and archivo_rubricas:
                                             reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
                                             for p in reader.pages: contenido += p.extract_text()
                             else:
-                                with log_container: st.warning(f"⚠️ Sin archivos para {nombre} (ID: {sid})")
+                                with log_container: st.warning(f"⚠️ No se encontró archivo para {nombre} (ID: {sid})")
 
                     if contenido:
                         try:
-                            prompt = f"Profesor Uniminuto. Evalúa: {st.session_state.enunciado} con {rubrica_txt}. JSON format. REGLA: No 'Tú/Usted', tono cálido. Trabajo: {contenido[:15000]}"
+                            prompt = f"Profesor Uniminuto. Evalúa: {st.session_state.enunciado} con {rubrica_txt}. JSON format. REGLA: No 'Tú/Usted'. Trabajo: {contenido[:15000]}"
                             if "Groq" in motor_ia:
                                 client = Groq(api_key=groq_key)
                                 chat = client.chat.completions.create(model=modelo_seleccionado, messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"})
@@ -163,8 +164,8 @@ if archivo_calificaciones and archivo_rubricas:
                             html = st.session_state.plantilla.replace('REEMPLAZO_P1', res['p1']).replace('REEMPLAZO_P2', res['p2']).replace('REEMPLAZO_P3', res['p3'])
                             
                             with log_container:
-                                st.success(f"✅ {nombre} calificado | Nota: {res['nota']}")
-                                with st.expander(f"Borrador", expanded=True):
+                                st.success(f"✅ Calificado: {nombre} | Nota: {res['nota']}")
+                                with st.expander(f"Ver borrador generado", expanded=True):
                                     components.html(html, height=150, scrolling=True)
                             
                             st.session_state['estudiantes_evaluados'].append({'nombre': nombre, 'student_id': sid, 'nota': float(res['nota']), 'html_final': html})
@@ -172,15 +173,15 @@ if archivo_calificaciones and archivo_rubricas:
                             with log_container: st.error(f"❌ Error con {nombre}: {str(e)}")
                     
                     progreso.progress((idx + 1) / len(df_final))
-                status_box.success("🎉 Ciclo terminado.")
+                status_box.success("🎉 Ciclo terminado. Valide y sincronice.")
 
 # 6. Sincronización
 if st.session_state['estudiantes_evaluados']:
     st.divider()
     if st.button("📤 SINCRONIZAR TODO CON CANVAS", type="primary", use_container_width=True):
-        for idx_s, est in enumerate(st.session_state['estudiantes_evaluados']):
-            st.toast(f"🚀 Subiendo nota de {est['nombre']}")
-            enviar_nota_canvas(st.sidebar.text_input('Dom.', value='https://uniminuto.instructure.com'), canvas_token, curso_id, actividad_id, est['student_id'], est['nota'], est['html_final'])
+        for est in st.session_state['estudiantes_evaluados']:
+            st.toast(f"🚀 Subiendo: {est['nombre']}")
+            enviar_nota_canvas(st.sidebar.text_input('Dominio', value='https://uniminuto.instructure.com', key="dom_sync"), canvas_token, curso_id, actividad_id, est['student_id'], est['nota'], est['html_final'])
         st.balloons()
         st.session_state['estudiantes_evaluados'] = []
         st.session_state['tokens_acumulados'] = 0
