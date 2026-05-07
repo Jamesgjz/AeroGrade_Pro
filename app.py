@@ -13,21 +13,18 @@ import time
 # 1. Configuración de Página
 st.set_page_config(page_title="AeroGrade Pro - UNIMINUTO", layout="wide")
 
-# Memoria persistente para no perder nada si la app se refresca
 if 'estudiantes_evaluados' not in st.session_state:
     st.session_state['estudiantes_evaluados'] = []
 if 'tokens_acumulados' not in st.session_state:
     st.session_state['tokens_acumulados'] = 0
 
-# 2. Función para listar modelos disponibles según tu API Key (Novedad)
+# 2. Funciones de Soporte
 def listar_modelos_gemini(api_key):
     try:
         genai.configure(api_key=api_key)
         return [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    except:
-        return ["gemini-1.5-flash", "gemini-1.5-pro"]
+    except: return ["gemini-1.5-flash", "gemini-1.5-pro"]
 
-# 3. Función de Envío a Canvas
 def enviar_nota_canvas(domain, token, course_id, assignment_id, student_id, nota, comentario_html):
     url = f"{domain.rstrip('/')}/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions/{student_id}"
     headers = {"Authorization": f"Bearer {token}"}
@@ -37,8 +34,8 @@ def enviar_nota_canvas(domain, token, course_id, assignment_id, student_id, nota
         return response.status_code == 200
     except: return False
 
-# 4. Sidebar - Selección de Cerebro e IA
-st.sidebar.header("⚙️ Configuración del Motor")
+# 3. Sidebar - Configuración y Motores
+st.sidebar.header("⚙️ Configuración del Sistema")
 motor_ia = st.sidebar.selectbox("Seleccione Motor:", ["Groq (Gratis)", "Google Gemini (Potencia/Pago)"])
 
 groq_key = st.secrets.get("GROQ_API_KEY", "")
@@ -46,28 +43,29 @@ gemini_key = ""
 modelo_seleccionado = "llama-3.3-70b-versatile"
 
 if motor_ia == "Google Gemini (Potencia/Pago)":
-    gemini_key = st.sidebar.text_input("Ingrese su Gemini API Key:", type="password")
+    gemini_key = st.sidebar.text_input("Ingrese Gemini API Key:", type="password")
     if gemini_key:
         opciones = listar_modelos_gemini(gemini_key)
-        modelo_seleccionado = st.sidebar.selectbox("Versión de Gemini Detectada:", opciones)
+        modelo_seleccionado = st.sidebar.selectbox("Versión de Gemini:", opciones)
 
 canvas_token = st.sidebar.text_input("Canvas Token", type="password")
 curso_id = st.sidebar.text_input('ID Curso', value='11731')
 actividad_id = st.sidebar.text_input('ID Actividad', value='208144')
 
-st.title("🛡️ AeroGrade Pro: Control Total y Validación en Vivo")
+st.title("🛡️ AeroGrade Pro: Monitor de Costos y Evaluación")
 st.markdown("---")
 
-# 5. Parámetros y Archivos
+# 4. Parámetros de la Actividad
 c_p1, c_p2 = st.columns(2)
 with c_p1: st.session_state.enunciado = st.text_area("📝 Enunciado de la Actividad:", height=100)
 with c_p2: st.session_state.plantilla = st.text_area("🖥️ Plantilla HTML de Retroalimentación:", height=100)
 
-st.subheader("📤 Insumos Académicos")
+# 5. Carga de Insumos
+st.subheader("📤 Carga de Archivos")
 c1, c2, c3 = st.columns(3)
 with c1: archivo_calificaciones = st.file_uploader("CSV Calificaciones", type=["csv"])
 with c2: archivo_rubricas = st.file_uploader("CSV Rúbricas", type=["csv"])
-with c3: archivo_zip = st.file_uploader('ZIP Entregas', type=['zip'])
+with c3: archivo_zip = st.file_uploader('ZIP de Entregas', type=['zip'])
 
 if archivo_calificaciones and archivo_rubricas:
     df_cal = pd.read_csv(archivo_calificaciones)
@@ -75,7 +73,7 @@ if archivo_calificaciones and archivo_rubricas:
     columnas_act = [col for col in df_cal.columns if any(k in col for k in ['MA Evaluación', 'MT Evaluación', 'MT Evidencia'])]
     
     if columnas_act:
-        actividad_sel = st.selectbox("🎯 ACTIVIDAD A EVALUAR:", ["-- Seleccione --"] + columnas_act)
+        actividad_sel = st.selectbox("🎯 SELECCIONE ACTIVIDAD:", ["-- Seleccione --"] + columnas_act)
         
         if actividad_sel != "-- Seleccione --":
             rubrica_sel = st.selectbox('Rúbrica:', df_rub['Rubric Name'].unique())
@@ -83,31 +81,42 @@ if archivo_calificaciones and archivo_rubricas:
             df_final = df_cal[df_cal['Student'].astype(str).str.strip() != 'Points Possible'].copy()
             df_final = df_final[df_final['ID'].notna()]
 
-            # Métrica de Tokens y Modelo
-            m1, m2 = st.columns(2)
+            # --- MONITOR DE CONSUMO Y PRECIO (LA MEJORA SOLICITADA) ---
+            st.markdown("### 📊 Monitor de Inversión")
+            m1, m2, m3 = st.columns(3)
             m1.metric("Tokens Consumidos", f"{st.session_state['tokens_acumulados']:,}")
-            m2.metric("Motor en Uso", modelo_seleccionado.split("/")[-1])
+            
+            # Cálculo de costo aproximado
+            if "Gemini" in motor_ia:
+                # Precio promedio Gemini 1.5 Flash: $0.10 USD por cada 1M tokens
+                costo_usd = (st.session_state['tokens_acumulados'] / 1_000_000) * 0.10
+                m2.metric("Costo Estimado (USD)", f"${costo_usd:.4f}")
+                m3.metric("Motor", "Gemini (Pago)")
+            else:
+                m2.metric("Costo Real", "$0.00 COP")
+                m3.metric("Motor", "Groq (Gratis)")
 
-            # --- VISUALIZACIÓN DE LO GANADO: LISTA Y BORRADORES ---
-            st.subheader("📋 Estado de la Evaluación")
-            with st.expander("Ver lista de estudiantes y progreso", expanded=False):
-                ids_evaluados = [e['student_id'] for e in st.session_state['estudiantes_evaluados']]
-                df_viz = df_final[['Student', 'ID']].copy()
-                df_viz['Estado'] = df_viz['ID'].apply(lambda x: "✅ Listo" if str(int(float(x))) in ids_evaluados else "⏳ Pendiente")
-                st.dataframe(df_viz, use_container_width=True)
+            # --- DEPURADOR DE ZIP ---
+            if archivo_zip:
+                with zipfile.ZipFile(archivo_zip, 'r') as z:
+                    nombres_zip = z.namelist()
+                    with st.expander("🔍 Depurador: Archivos detectados en el ZIP"):
+                        st.write(f"Se encontraron {len(nombres_zip)} archivos.")
+                        st.code("\n".join(nombres_zip[:15]))
 
+            st.divider()
+
+            # --- LISTA DE CALIFICADOS (TIEMPO REAL) ---
             if st.session_state['estudiantes_evaluados']:
-                st.subheader("📝 Notas y Comentarios Generados (Valide aquí)")
+                st.subheader("✅ Borradores para Validación")
                 for e in st.session_state['estudiantes_evaluados']:
                     with st.expander(f"🧑‍🎓 {e['nombre']} - Nota: {e['nota']}", expanded=False):
                         components.html(e['html_final'], height=150, scrolling=True)
 
-            st.divider()
-            
-            # --- BOTONES DE ACCIÓN ---
+            # --- EJECUCIÓN ---
             b_eval, b_reset = st.columns(2)
             with b_eval:
-                btn_iniciar = st.button('🚀 INICIAR CALIFICACIÓN EN TIEMPO REAL', type="primary", use_container_width=True)
+                btn_iniciar = st.button('🚀 INICIAR CALIFICACIÓN VISUAL', type="primary", use_container_width=True)
             with b_reset:
                 if st.button("🧹 EMPEZAR DE CERO", use_container_width=True):
                     st.session_state['estudiantes_evaluados'] = []
@@ -117,7 +126,7 @@ if archivo_calificaciones and archivo_rubricas:
             if btn_iniciar:
                 progreso = st.progress(0)
                 status_box = st.empty()
-                log_container = st.container() # AQUÍ SE MUESTRAN LAS NOTAS EN VIVO
+                log_container = st.container()
 
                 for idx, (i, row) in enumerate(df_final.iterrows()):
                     nombre = row.get('Student', 'Estudiante')
@@ -127,25 +136,27 @@ if archivo_calificaciones and archivo_rubricas:
                         progreso.progress((idx + 1) / len(df_final))
                         continue
                     
-                    status_box.info(f"🔍 Analizando entrega de: **{nombre}**")
+                    status_box.info(f"🔍 Evaluando a: **{nombre}**")
                     
                     contenido = ""
                     if archivo_zip:
                         with zipfile.ZipFile(archivo_zip, 'r') as z:
-                            # Búsqueda robusta por ID en el nombre del archivo
-                            archivos_alumno = [f for f in z.namelist() if sid in f]
-                            if not archivos_alumno:
-                                with log_container: st.warning(f"⚠️ No se hallaron archivos para {nombre}")
-                            for f_name in archivos_alumno:
-                                with z.open(f_name) as f:
-                                    ext = f_name.lower()
-                                    if any(ext.endswith(e) for e in ['.java', '.py', '.txt', '.sql', '.r', '.html', '.css', '.js', '.xml', '.pkt']):
-                                        contenido += f"\n--- {f_name} ---\n"
-                                        contenido += f.read().decode('utf-8', errors='ignore')
-                                    elif ext.endswith('.pdf'):
-                                        reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
-                                        for p in reader.pages: contenido += p.extract_text()
-                    
+                            # Búsqueda ultra-robusta por ID
+                            archivos_estudiante = [f for f in z.namelist() if sid in f]
+                            if archivos_estudiante:
+                                with log_container: st.info(f"📄 Leyendo archivos para {nombre}: {archivos_estudiante}")
+                                for f_n in archivos_estudiante:
+                                    with z.open(f_n) as f:
+                                        ext = f_n.lower()
+                                        if any(ext.endswith(e) for e in ['.java', '.py', '.txt', '.sql', '.r', '.html', '.css', '.js', '.xml', '.pkt']):
+                                            contenido += f"\n--- {f_n} ---\n"
+                                            contenido += f.read().decode('utf-8', errors='ignore')
+                                        elif ext.endswith('.pdf'):
+                                            reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
+                                            for p in reader.pages: contenido += p.extract_text()
+                            else:
+                                with log_container: st.warning(f"⚠️ No se hallaron archivos para {nombre} (ID: {sid})")
+
                     if contenido:
                         prompt = f"Profesor Uniminuto. Evalúa: {st.session_state.enunciado} con {rubrica_txt}. JSON format. REGLA: No 'Tú/Usted', tono cálido. Trabajo: {contenido[:15000]}"
                         try:
@@ -163,31 +174,28 @@ if archivo_calificaciones and archivo_rubricas:
 
                             html = st.session_state.plantilla.replace('REEMPLAZO_P1', res['p1']).replace('REEMPLAZO_P2', res['p2']).replace('REEMPLAZO_P3', res['p3'])
                             
-                            # MOSTRAR EN VIVO (Lo que me pediste no omitir)
                             with log_container:
                                 st.success(f"✅ Calificado: {nombre} | Nota: {res['nota']}")
                                 with st.expander(f"Borrador de {nombre}", expanded=True):
                                     components.html(html, height=150, scrolling=True)
                             
                             st.session_state['estudiantes_evaluados'].append({'nombre': nombre, 'student_id': sid, 'nota': float(res['nota']), 'html_final': html})
-                            
                         except Exception as e:
                             with log_container: st.error(f"❌ Error con {nombre}: {str(e)}")
                     
                     progreso.progress((idx + 1) / len(df_final))
-                status_box.success("🎉 Evaluación finalizada. Ahora puedes sincronizar con Canvas.")
+                status_box.success("🎉 Ciclo terminado. Valide los resultados arriba antes de sincronizar.")
 
-# 6. Sincronización a Canvas
+# 6. Sincronización Final
 if st.session_state['estudiantes_evaluados']:
     st.divider()
-    if st.button("📤 SINCRONIZAR TODAS LAS NOTAS CON CANVAS", type="primary", use_container_width=True):
-        total_s = len(st.session_state['estudiantes_evaluados'])
+    if st.button("📤 SINCRONIZAR TODO CON CANVAS AHORA", type="primary", use_container_width=True):
         for idx_s, est in enumerate(st.session_state['estudiantes_evaluados']):
-            st.toast(f"🚀 Subiendo nota de {est['nombre']} ({idx_s + 1}/{total_s})")
+            st.toast(f"🚀 Subiendo nota de {est['nombre']}")
             enviar_nota_canvas(st.sidebar.text_input('Dominio', value='https://uniminuto.instructure.com'), canvas_token, curso_id, actividad_id, est['student_id'], est['nota'], est['html_final'])
         st.balloons()
         st.success("¡Sincronización exitosa!")
         st.session_state['estudiantes_evaluados'] = []
         st.session_state['tokens_acumulados'] = 0
-        time.sleep(2)
+        time.sleep(1)
         st.rerun()
